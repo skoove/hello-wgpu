@@ -1,0 +1,11 @@
+[package]
+name = "hello-wgpu"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+env_logger = "0.11"
+log = "0.4"
+wgpu = "25.0"
+winit = "0.30"
+
