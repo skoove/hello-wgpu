@@ -6,6 +6,9 @@ edition = "2024"
 [dependencies]
 env_logger = "0.11"
 log = "0.4"
+pollster = "0.4"
+sdl3 = { version = "0.14", features = [ "raw-window-handle" ] }
 wgpu = "25.0"
-winit = "0.30"
+
+
 
