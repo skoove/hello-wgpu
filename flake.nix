@@ -10,13 +10,17 @@
     };
   };
 
-  outputs = { self, nixpkgs, fenix }:
+  outputs = {self, nixpkgs, fenix }:
   let
     system = "x86_64-linux";
     pkgs = nixpkgs.legacyPackages.${system};
     fe_pkgs = fenix.packages.${system};
 
     librarys = with pkgs; [
+      wayland
+      libxkbcommon
+      sdl3
+      vulkan-loader
     ];
   in {
     devShells.${system}.default = pkgs.mkShell {
