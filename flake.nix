@@ -34,10 +34,16 @@
           "rust-analyzer"
         ])
         pkg-config
-        wgsl-analyzer
       ] ++ librarys;
 
       LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath librarys}";
+
+      # wgsl-analyzer has wrong name :( this fixes that
+      shellHook = ''
+        mkdir -p .dev-bin
+        ln -sf ${pkgs.wgsl-analyzer}/bin/wgsl-analyzer .dev-bin/wgsl_analyzer
+        export PATH="$PWD/.dev-bin:$PATH"
+      '';
     };
   };
 }
