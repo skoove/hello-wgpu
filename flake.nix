@@ -34,6 +34,7 @@
           "rust-analyzer"
         ])
         pkg-config
+        wgsl-analyzer
       ] ++ librarys;
 
       LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath librarys}";
