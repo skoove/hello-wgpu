@@ -1,20 +1,49 @@
-use sdl3::{event::Event, keyboard::Keycode, mouse::MouseButton};
-use wgpu::{
-    BackendOptions, InstanceFlags,
-    rwh::{HasDisplayHandle, HasWindowHandle},
-};
+use sdl3::{event::Event, keyboard::Keycode};
+use wgpu::{BackendOptions, InstanceFlags, util::DeviceExt};
 
 struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface_config: wgpu::SurfaceConfiguration,
-    window_size: (u32, u32),
-    window: &'a sdl3::video::Window,
+    _window_size: (u32, u32),
+    _window: &'a sdl3::video::Window,
     sdl_context: sdl3::Sdl,
-
     clear_color: wgpu::Color,
+    render_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    num_vertices: u32,
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+impl Vertex {
+    pub const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
+    };
+}
+
+const VERTICES: &[Vertex] = &[
+    Vertex {
+        position: [0.0, 1.0, 0.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [-1.0, -1.0, 0.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [1.0, -1.0, 0.0],
+        color: [0.0, 0.0, 1.0],
+    },
+];
 
 impl<'a> State<'a> {
     fn new(window: &'a sdl3::video::Window, sdl_context: sdl3::Sdl) -> Self {
@@ -28,7 +57,7 @@ impl<'a> State<'a> {
         });
 
         let surface =
-            create_surface::create_surface(&instance, &window).expect("failed to create surface");
+            create_surface::create_surface(&instance, window).expect("failed to create surface");
 
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptionsBase {
@@ -60,15 +89,69 @@ impl<'a> State<'a> {
 
         surface.configure(&device, &surface_config);
 
+        let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor::default());
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: None,
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[Vertex::LAYOUT],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let num_vertices = VERTICES.len() as u32;
+
         State {
             surface,
             device,
             queue,
             surface_config,
-            window_size: window.size(),
-            window: &window,
+            _window_size: window.size(),
+            _window: window,
             sdl_context,
             clear_color: wgpu::Color::BLACK,
+            render_pipeline,
+            vertex_buffer,
+            num_vertices,
         }
     }
 
@@ -84,22 +167,29 @@ impl<'a> State<'a> {
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("clear screen pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(self.clear_color),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            ..Default::default()
-        });
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("clear screen pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(self.clear_color),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.draw(0..self.num_vertices, 0..1);
+        }
 
         self.queue.submit(Some(encoder.finish()));
         output.present();
