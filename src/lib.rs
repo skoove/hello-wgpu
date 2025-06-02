@@ -1,5 +1,14 @@
 use sdl3::{event::Event, keyboard::Keycode};
-use wgpu::{BackendOptions, InstanceFlags, util::DeviceExt};
+use wgpu::{
+    BackendOptions, InstanceFlags,
+    util::{DeviceExt, RenderEncoder},
+};
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+struct Globals {
+    resolution: [f32; 2],
+}
 
 struct State<'a> {
     surface: wgpu::Surface<'a>,
@@ -11,39 +20,9 @@ struct State<'a> {
     sdl_context: sdl3::Sdl,
     clear_color: wgpu::Color,
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    num_vertices: u32,
+    globals_buffer: wgpu::Buffer,
+    globals_bind_group: wgpu::BindGroup,
 }
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: [f32; 3],
-    color: [f32; 3],
-}
-
-impl Vertex {
-    pub const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
-    };
-}
-
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [0.0, 1.0, 0.0],
-        color: [0.0, 1.0, 0.0],
-    },
-    Vertex {
-        position: [-1.0, -1.0, 0.0],
-        color: [1.0, 0.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, -1.0, 0.0],
-        color: [0.0, 0.0, 1.0],
-    },
-];
 
 impl<'a> State<'a> {
     fn new(window: &'a sdl3::video::Window, sdl_context: sdl3::Sdl) -> Self {
@@ -89,10 +68,47 @@ impl<'a> State<'a> {
 
         surface.configure(&device, &surface_config);
 
+        let globals = Globals {
+            resolution: [window.size().0 as f32, window.size().1 as f32],
+        };
+
+        let globals_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("globals buffer"),
+            contents: bytemuck::cast_slice(&[globals]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+        let globals_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: globals_buffer.as_entire_binding(),
+            }],
+        });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
         let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor::default());
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[&bind_group_layout],
+                push_constant_ranges: &[],
+            });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: None,
@@ -101,7 +117,7 @@ impl<'a> State<'a> {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Vertex::LAYOUT],
+                buffers: &[],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -109,7 +125,7 @@ impl<'a> State<'a> {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -132,14 +148,6 @@ impl<'a> State<'a> {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let num_vertices = VERTICES.len() as u32;
-
         State {
             surface,
             device,
@@ -150,8 +158,8 @@ impl<'a> State<'a> {
             sdl_context,
             clear_color: wgpu::Color::BLACK,
             render_pipeline,
-            vertex_buffer,
-            num_vertices,
+            globals_buffer,
+            globals_bind_group,
         }
     }
 
@@ -186,9 +194,9 @@ impl<'a> State<'a> {
                 ..Default::default()
             });
 
+            render_pass.set_bind_group(0, &self.globals_bind_group, &[]);
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..self.num_vertices, 0..1);
+            render_pass.draw(0..3, 0..1);
         }
 
         self.queue.submit(Some(encoder.finish()));
