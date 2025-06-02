@@ -34,12 +34,13 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     let uv = frag_coord.xy / globals.resolution;
 
     let center = vec2<f32>(0.5, 0.5);
-    let radius = 0.5;
-    let distance = distance(uv, center);
+    let radius = 0.25; // 0.5 * 0.5
+    let diff = uv - center;
+    let dist_squared = dot(diff, diff);
     let edge_width = 0.01;
 
     var alpha: f32 = 0.0;
-    if (distance < radius) {
+    if (dist_squared < radius) {
         alpha = 1.0;
     }
 
