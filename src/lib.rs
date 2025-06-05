@@ -18,7 +18,6 @@ struct State<'a> {
     _window_size: (u32, u32),
     _window: &'a sdl3::video::Window,
     sdl_context: sdl3::Sdl,
-    clear_color: wgpu::Color,
     render_pipeline: wgpu::RenderPipeline,
     globals_buffer: wgpu::Buffer,
     globals_bind_group: wgpu::BindGroup,
@@ -26,9 +25,6 @@ struct State<'a> {
 
 impl<'a> State<'a> {
     fn new(window: &'a sdl3::video::Window, sdl_context: sdl3::Sdl) -> Self {
-        // let window_handle = window.window_handle().unwrap();
-        // let display_handle = window.display_handle().unwrap();
-
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             flags: InstanceFlags::all(),
@@ -156,7 +152,6 @@ impl<'a> State<'a> {
             _window_size: window.size(),
             _window: window,
             sdl_context,
-            clear_color: wgpu::Color::BLACK,
             render_pipeline,
             globals_buffer,
             globals_bind_group,
@@ -187,7 +182,12 @@ impl<'a> State<'a> {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.clear_color),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 1.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
