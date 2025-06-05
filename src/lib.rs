@@ -4,6 +4,9 @@ use wgpu::{
     util::{DeviceExt, RenderEncoder},
 };
 
+mod math;
+mod rendering;
+
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
 struct Globals {
