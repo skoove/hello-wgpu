@@ -1,11 +1,13 @@
 /// f32 2d vector
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Vec2 {
     pub x: f32,
     pub y: f32,
 }
 
 impl Vec2 {
+    pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
+
     pub fn new(x: f32, y: f32) -> Self {
         Self {
             x: x.into(),
@@ -15,13 +17,15 @@ impl Vec2 {
 }
 
 /// u32 2d vector
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct UVec2 {
     pub x: u32,
     pub y: u32,
 }
 
 impl UVec2 {
+    pub const ZERO: Self = Self { x: 0, y: 0 };
+
     pub fn new(x: u32, y: u32) -> Self {
         Self {
             x: x.into(),
