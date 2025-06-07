@@ -1,23 +1,23 @@
 use log::info;
-use wgpu::{DeviceDescriptor, FragmentState};
+use wgpu::DeviceDescriptor;
 
-use crate::math::UVec2;
+use crate::{math::UVec2, world::World};
 
-mod camera;
+pub mod camera;
 
-struct Window {
+pub struct Window {
     sdl_window: sdl3::video::Window,
-    sdl_context: sdl3::Sdl,
+    pub sdl_context: sdl3::Sdl,
     size: UVec2,
 }
-struct Renderer<'a> {
+
+pub struct Renderer<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface_config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
     camera_buffer: camera::CameraBuffer,
-    window: Window,
 }
 
 impl Window {
@@ -33,15 +33,15 @@ impl Window {
         info!("created window with title: {}", title);
 
         Self {
-            sdl_window: sdl_window,
+            sdl_window,
             sdl_context,
             size,
         }
     }
 }
 
-impl Renderer<'_> {
-    pub fn new(window: Window, world: World) -> Self {
+impl<'a> Renderer<'a> {
+    pub fn new(window: &'a mut Window, world: &crate::world::World) -> Self {
         // surface device queue etc setup
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -75,24 +75,23 @@ impl Renderer<'_> {
             format: surface.get_capabilities(&adapter).formats[0],
             width: window.size.x,
             height: window.size.y,
-            present_mode: wgpu::PresentMode::Mailbox,
+            present_mode: wgpu::PresentMode::Fifo,
             desired_maximum_frame_latency: 2,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
         };
 
+        surface.configure(&device, &surface_config);
+
         // render pipeline things!
 
+        let camera_buffer = world.camera.to_uniform().to_buffer(&device);
         let shader = device.create_shader_module(wgpu::include_wgsl!("./shaders/shader.wgsl"));
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[&world
-                    .camera
-                    .to_uniform()
-                    .to_buffer(&device)
-                    .bind_group_layout],
+                bind_group_layouts: &[&camera_buffer.bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -140,9 +139,57 @@ impl Renderer<'_> {
             queue,
             surface_config,
             render_pipeline,
-            camera_buffer: todo!(),
-            window,
+            camera_buffer,
         }
+    }
+
+    /// tells the gpu to render a frame!
+    pub fn render(&self, world: &World) -> Result<(), wgpu::SurfaceError> {
+        let output = match self.surface.get_current_texture() {
+            Ok(output) => output,
+            Err(_) => {
+                self.surface.configure(&self.device, &self.surface_config);
+                self.surface.get_current_texture()?
+            }
+        };
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        {
+            // circle drawing pass
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+
+            render_pass.set_bind_group(0, &self.camera_buffer.bind_group, &[]);
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw(0..3, 0..1);
+        }
+
+        self.queue.submit(Some(encoder.finish()));
+        output.present();
+
+        return Ok(());
     }
 }
 
