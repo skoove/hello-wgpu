@@ -14,6 +14,7 @@ pub struct CameraUniform {
     window_size: [u32; 2],
     position: [f32; 2],
     zoom: f32,
+    _padding: f32, // 24 bytes
 }
 
 pub struct CameraBuffer {
@@ -37,6 +38,7 @@ impl Camera {
             window_size: [self.window_size.x, self.window_size.y],
             position: [self.position.x, self.position.y],
             zoom: self.zoom,
+            _padding: 0.0,
         }
     }
 }
