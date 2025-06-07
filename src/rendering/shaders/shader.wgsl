@@ -1,7 +1,7 @@
 var<private> VERTICES: array<vec2<f32>, 3> = array<vec2<f32>, 3>(
-    vec2<f32>(-1.73205, -1.0),
-    vec2<f32>(1.73205, -1.0),
     vec2<f32>(0.0, 2.0),
+    vec2<f32>(1.73205, -1.0),
+    vec2<f32>(-1.73205, -1.0),
 );
 
 struct Globals {
