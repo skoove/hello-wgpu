@@ -1,3 +1,5 @@
+use wgpu::util::DeviceExt;
+
 use crate::math::{UVec2, Vec2};
 
 pub struct Camera {
@@ -15,8 +17,9 @@ pub struct CameraUniform {
 }
 
 pub struct CameraBuffer {
-    buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
+    pub buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+    pub bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl Camera {
@@ -28,12 +31,52 @@ impl Camera {
         }
     }
 
-    /// Turns the `Camera` into a `CameraUniform`
+    /// Creates a 'CameraUniform' from the 'Camera'
     pub fn to_uniform(&self) -> CameraUniform {
         CameraUniform {
             window_size: [self.window_size.x, self.window_size.y],
             position: [self.position.x, self.position.y],
             zoom: self.zoom,
+        }
+    }
+}
+
+impl CameraUniform {
+    /// Creats a `CameraBuffer` from the `CameraUniform`
+    pub fn to_buffer(&self, device: &wgpu::Device) -> CameraBuffer {
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[*self]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+        });
+
+        CameraBuffer {
+            buffer,
+            bind_group,
+            bind_group_layout,
         }
     }
 }

@@ -1,8 +1,5 @@
 use sdl3::{event::Event, keyboard::Keycode};
-use wgpu::{
-    BackendOptions, InstanceFlags,
-    util::{DeviceExt, RenderEncoder},
-};
+use wgpu::{BackendOptions, InstanceFlags, util::DeviceExt};
 
 mod math;
 mod rendering;
